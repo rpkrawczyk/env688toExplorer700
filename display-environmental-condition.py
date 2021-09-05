@@ -11,6 +11,7 @@ Links:
 """
 
 import time
+import threading
 import json
 from PIL import Image
 from PIL import ImageDraw
@@ -30,6 +31,33 @@ device = 0
 
 # File name for the data store.
 DATASTOREFNAME = "DATASTORE.$"
+
+# Global data array.
+dataarr = []
+
+# Global variable indicating that we are still running.
+RUNNING = True
+
+def loop_new_env_data(bme):
+    """Loop that gets every 30s new environmental data.
+
+    Usually this function runs in a separated thread and does not return.
+
+    @param bme: BME68X object to acces the sensor
+    """
+    global dataarr
+    while RUNNING:
+        # Get newest data.
+        data = bme.get_data()
+        # Only keep the last 100000 values.
+        narr = dataarr[-100000:]
+        # Append to our data array.
+        narr.append(data)
+        # And now overwrite with the new array.
+        dataarr = narr
+        print(data)
+        time.sleep(30)
+
 
 def init_display():
     """Initialise display and get object.
@@ -104,37 +132,43 @@ def main():
     # font = ImageFont.load_default()
     i = 0
     try:
+        global dataarr
         dataarr = json.load(open(DATASTOREFNAME))
         print("%d elements read." % len(dataarr))
     except IOError:
-        dataarr = []
+        pass
+    collector_thread = threading.Thread(target=loop_new_env_data, name="thread-collector", args=(bme,))
+    collector_thread.start()
+    print("Collector id=%d." % collector_thread.ident)
     print('Press Ctrl-C to quit.')
     try:
         while True:
             image.putpixel((i % 128, 0), image.getpixel((i % 128, 0)) ^ 1)
             # Clear image.
             draw.rectangle([0, 1, 128, 64], fill=0)
-            data = bme.get_data()
-            # Append to our data array.
-            dataarr.append(data)
-            print(data)
+            # Get latest data.
+            data = dataarr[-1]
+            print("Displaying overview.")
             display_data(data, draw)
             # Display image.
             disp.image(image)
             disp.display()
             time.sleep(7)
             i += 1
-            # Only keep the last 100000 values.
-            dataarr = dataarr[-100000:]
             for elem in ("temperature", "pressure", "humidity", "gas_resistance"):
-            #for elem in ("sample_nr", ):
+                print("Displaying '%s'." % elem)
                 display_elem_curve(draw, elem, dataarr)
                 disp.image(image)
                 disp.display()                
                 time.sleep(4)
     except KeyboardInterrupt:
+        print("Stopping data acquisition.")
+        global RUNNING
+        RUNNING = False
         disp.clear()
         disp.display()
+        # Wait until other thread finishes.
+        collector_thread.join()
         with open(DATASTOREFNAME, "w") as out:
             json.dump(dataarr, out)
         
