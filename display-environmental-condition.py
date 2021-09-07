@@ -13,6 +13,7 @@ Links:
 import time
 import threading
 import json
+import smbus
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
@@ -20,8 +21,11 @@ import bme68x
 import spidev as SPI
 import SSD1306
 
-## I²C Address of the BME688 sensor.
+## I²C address of the BME688 sensor.
 BME_I2C_ADDR = 0x77
+
+## I²C address of the IO expander.
+PCF_8574_ADDR = 0x20
 
 # Raspberry Pi pin configuration:
 RST = 19
@@ -46,6 +50,7 @@ def loop_new_env_data(bme):
     @param bme: BME68X object to acces the sensor
     """
     global dataarr
+    bus = smbus.SMBus(1)
     while RUNNING:
         # Get newest data.
         data = bme.get_data()
@@ -56,6 +61,9 @@ def loop_new_env_data(bme):
         # And now overwrite with the new array.
         dataarr = narr
         print(data)
+        # Now flash the LED.
+        pcf = bus.read_byte(PCF_8574_ADDR)
+        bus.write_byte(PCF_8574_ADDR, pcf ^ 0x10)
         time.sleep(30)
 
 
