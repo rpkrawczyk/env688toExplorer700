@@ -13,10 +13,10 @@ Links:
 import time
 import threading
 import json
-import smbus
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
+import smbus
 import bme68x
 import spidev as SPI
 import SSD1306
@@ -30,14 +30,14 @@ PCF_8574_ADDR = 0x20
 # Raspberry Pi pin configuration:
 RST = 19
 DC = 16
-bus = 0
+SSD1306_BUS = 0
 device = 0
 
 # File name for the data store.
 DATASTOREFNAME = "DATASTORE.$"
 
 # Global data array.
-dataarr = []
+DATAARR = []
 
 # Global variable indicating that we are still running.
 RUNNING = True
@@ -49,17 +49,17 @@ def loop_new_env_data(bme):
 
     @param bme: BME68X object to acces the sensor
     """
-    global dataarr
+    global DATAARR
     bus = smbus.SMBus(1)
     while RUNNING:
         # Get newest data.
         data = bme.get_data()
         # Only keep the last 100000 values.
-        narr = dataarr[-100000:]
+        narr = DATAARR[-100000:]
         # Append to our data array.
         narr.append(data)
         # And now overwrite with the new array.
-        dataarr = narr
+        DATAARR = narr
         print(data)
         # Now flash the LED.
         pcf = bus.read_byte(PCF_8574_ADDR)
@@ -73,7 +73,7 @@ def init_display():
     @return: display object.
     """
     # 128x32 display with hardware I2C:
-    disp = SSD1306.SSD1306(rst=RST, dc=DC, spi=SPI.SpiDev(bus, device))
+    disp = SSD1306.SSD1306(rst=RST, dc=DC, spi=SPI.SpiDev(SSD1306_BUS, device))
     # Initialize library.
     disp.begin()
     # Clear display.
@@ -140,9 +140,9 @@ def main():
     # font = ImageFont.load_default()
     i = 0
     try:
-        global dataarr
-        dataarr = json.load(open(DATASTOREFNAME))
-        print("%d elements read." % len(dataarr))
+        global DATAARR
+        DATAARR = json.load(open(DATASTOREFNAME))
+        print("%d elements read." % len(DATAARR))
     except IOError:
         pass
     collector_thread = threading.Thread(target=loop_new_env_data, name="thread-collector", args=(bme,))
@@ -155,7 +155,7 @@ def main():
             # Clear image.
             draw.rectangle([0, 1, 128, 64], fill=0)
             # Get latest data.
-            data = dataarr[-1]
+            data = DATAARR[-1]
             print("Displaying overview.")
             display_data(data, draw)
             # Display image.
@@ -165,9 +165,9 @@ def main():
             i += 1
             for elem in ("temperature", "pressure", "humidity", "gas_resistance"):
                 print("Displaying '%s'." % elem)
-                display_elem_curve(draw, elem, dataarr)
+                display_elem_curve(draw, elem, DATAARR)
                 disp.image(image)
-                disp.display()                
+                disp.display()
                 time.sleep(4)
     except KeyboardInterrupt:
         print("Stopping data acquisition.")
@@ -178,8 +178,8 @@ def main():
         # Wait until other thread finishes.
         collector_thread.join()
         with open(DATASTOREFNAME, "w") as out:
-            json.dump(dataarr, out)
-        
-    
+            json.dump(DATAARR, out)
+
+
 if __name__ == "__main__":
     main()
